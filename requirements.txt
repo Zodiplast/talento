@@ -1,0 +1,6 @@
+polars
+fastexcel       # leer .xlsx con polars (pl.read_excel)
+openpyxl        # escribir .xlsx
+python-dotenv
+google-generativeai
+anthropic
