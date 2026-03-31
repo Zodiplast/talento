@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reporte Biométrico — Zodiplast</title>
+  <style>
+    :root {
+      --blue-950: #0f2045;
+      --blue-900: #1e3a5f;
+      --blue-700: #1d4ed8;
+      --blue-600: #2563eb;
+      --blue-100: #dbeafe;
+      --blue-50:  #eff6ff;
+      --green-100: #dcfce7;
+      --green-800: #166534;
+      --amber-100: #fef3c7;
+      --amber-800: #92400e;
+      --rose-50: #fdf2f8;
+      --rose-100: #fce7f3;
+      --rose-700: #be123c;
+      --red-700: #b91c1c;
+      --slate-50:  #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-400: #94a3b8;
+      --slate-500: #64748b;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --bg: #eef2f7;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--slate-800);
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--blue-950) 0%, var(--blue-700) 100%);
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(255,255,255,.15);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+    }
+
+    .brand p {
+      font-size: 11px;
+      opacity: .65;
+      margin-top: 1px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ctrl label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      opacity: .65;
+    }
+
+    .ctrl select {
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.25);
+      color: #fff;
+      padding: 7px 12px;
+      border-radius: 7px;
+      font-size: 13px;
+      min-width: 200px;
+      cursor: pointer;
+      outline: none;
+      transition: background .15s, border-color .15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,.7)' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 30px;
+    }
+
+    .ctrl select:hover, .ctrl select:focus {
+      background-color: rgba(255,255,255,.22);
+      border-color: rgba(255,255,255,.5);
+    }
+
+    .ctrl select option {
+      background: var(--blue-900);
+      color: #fff;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .metric-btn,
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .metric-btn {
+      background: var(--slate-100);
+      color: var(--slate-700);
+      border-color: var(--slate-200);
+    }
+
+    .metric-btn.alert {
+      background: var(--rose-100);
+      color: var(--red-700);
+      border-color: #f9a8d4;
+    }
+
+    .metric-btn.extra {
+      background: #dbeafe;
+      color: #1d4ed8;
+      border-color: #93c5fd;
+    }
+
+    .download-btn {
+      background: var(--blue-600);
+      color: #fff;
+      border-color: rgba(255,255,255,.18);
+      box-shadow: var(--shadow);
+    }
+
+    .download-btn:hover {
+      background: var(--blue-700);
+    }
+
+    .download-btn.disabled {
+      pointer-events: none;
+      background: var(--slate-200);
+      color: var(--slate-500);
+      border-color: var(--slate-200);
+      box-shadow: none;
+    }
+
+    /* ── Main ── */
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 32px;
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--slate-400);
+      margin-bottom: 6px;
+    }
+
+    .card-value {
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+
+    .card-sub {
+      font-size: 11px;
+      color: var(--slate-400);
+      margin-top: 4px;
+    }
+
+    .card.completo    .card-value { color: #16a34a; }
+    .card.incompleto  .card-value { color: #d97706; }
+    .card.libre       .card-value { color: var(--slate-500); }
+    .card.efectivo    .card-value { color: var(--blue-600); font-size: 24px; }
+    .card.prom        .card-value { color: var(--slate-700); font-size: 22px; }
+    .card.exceso-desc .card-value { color: #be185d; font-size: 24px; }
+    .card.extra-total .card-value { color: #0e7490; font-size: 24px; }
+
+    /* ── Table card ── */
+    .tcard {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .tcard-head {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--slate-100);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .tcard-head h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--slate-800);
+      letter-spacing: -.4px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .leg {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      color: var(--slate-500);
+    }
+
+    .leg-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-c { background: #22c55e; }
+    .dot-i { background: #f59e0b; }
+    .dot-l { background: var(--slate-300); }
+    .dot-f { background: #a78bfa; }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      background: var(--blue-50);
+      color: var(--blue-600);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      padding: 10px 14px;
+      text-align: center;
+      border-bottom: 2px solid var(--blue-100);
+      white-space: nowrap;
+      position: sticky;
+      top: 0; /* makes header sticky inside scroll container - best effort */
+    }
+
+    thead th:first-child,
+    thead th:nth-child(2) { text-align: left; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--slate-100);
+      transition: filter .1s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { filter: brightness(.97); }
+
+    tbody td {
+      padding: 9px 14px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    tbody td:first-child { text-align: left; }
+    tbody td:nth-child(2) { text-align: left; }
+
+    tr.completo   { background: #fff; }
+    tr.incompleto { background: #fffdf0; }
+    tr.libre      { background: var(--slate-50); }
+    tr.libre td   { color: var(--slate-400); }
+
+    /* fecha cell */
+    .fecha-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .dow {
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--slate-400);
+      width: 28px;
+    }
+
+    .libre .dow { color: var(--slate-300); }
+
+    .dnum {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--slate-700);
+      min-width: 18px;
+    }
+
+    .libre .dnum { color: var(--slate-400); }
+
+    /* badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      text-transform: uppercase;
+    }
+
+    .bc { background: #dcfce7; color: #15803d; }
+    .bi { background: #fef3c7; color: #b45309; }
+    .bl { background: var(--slate-100); color: var(--slate-500); }
+    .bf { background: #ede9fe; color: #6d28d9; }
+
+    /* exceso de descanso → fila magenta (solo cuando exceso > 5 min) */
+    tr.exceso-descanso { background: var(--rose-100) !important; }
+    tr.exceso-descanso:hover { filter: brightness(.96) !important; }
+    tr.exceso-descanso td {
+      color: var(--red-700);
+    }
+    .alert-cell {
+      color: var(--red-700) !important;
+      font-weight: 700;
+    }
+
+    /* feriado → fila violeta */
+    tr.feriado { background: #f5f3ff !important; }
+    tr.feriado td { color: #7c3aed; }
+
+    /* horas extra */
+    .extra-val { color: #0e7490; font-weight: 700; }
+
+    /* time & duration */
+    .mono {
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .ef { color: var(--blue-600); font-weight: 700; }
+    .nd { color: var(--slate-300); }
+    .nm { color: var(--slate-400); font-size: 11px; }
+
+    /* empty */
+    .empty {
+      text-align: center;
+      padding: 72px 20px;
+      color: var(--slate-400);
+    }
+
+    .empty-icon { font-size: 48px; margin-bottom: 14px; }
+    .empty p    { font-size: 15px; }
+
+    /* footer */
+    footer {
+      text-align: center;
+      padding: 28px;
+      color: var(--slate-400);
+      font-size: 11px;
+    }
+
+    @media (max-width: 768px) {
+      header { flex-direction: column; align-items: flex-start; padding: 14px 18px; }
+      main   { padding: 16px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon">⏱</div>
+    <div>
+      <h1>Reporte Biométrico</h1>
+      <p>Zodiplast · Control de Asistencia</p>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="ctrl">
+      <label>Colaborador</label>
+      <select id="selColab"><option value="">— Seleccionar —</option></select>
+    </div>
+    <div class="ctrl">
+      <label>Mes</label>
+      <select id="selMes"><option value="">— Seleccionar —</option></select>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="statsWrap" class="stats" style="display:none">
+    <div class="card completo">
+      <div class="card-label">Días completos</div>
+      <div class="card-value" id="stComp">—</div>
+    </div>
+    <div class="card incompleto">
+      <div class="card-label">Incompletos</div>
+      <div class="card-value" id="stIncomp">—</div>
+      <div class="card-sub">Sin entrada o salida</div>
+    </div>
+    <div class="card libre">
+      <div class="card-label">Días libres / ausentes</div>
+      <div class="card-value" id="stLibre">—</div>
+      <div class="card-sub" id="stLibreSub"></div>
+    </div>
+    <div class="card exceso-desc">
+      <div class="card-label">Exceso descanso total</div>
+      <div class="card-value" id="stExcesoDesc">—</div>
+      <div class="card-sub">Sobre 45 min (margen 5 min)</div>
+    </div>
+    <div class="card extra-total">
+      <div class="card-label">Horas extra totales</div>
+      <div class="card-value" id="stHorasExtra">—</div>
+    </div>
+    <div class="card efectivo">
+      <div class="card-label">Total horas efectivas</div>
+      <div class="card-value" id="stTotEf">—</div>
+      <div class="card-sub" id="stTotJor"></div>
+    </div>
+    <div class="card prom">
+      <div class="card-label">Promedio efectivo / día</div>
+      <div class="card-value" id="stPromEf">—</div>
+      <div class="card-sub" id="stPromJor"></div>
+    </div>
+  </div>
+
+  <div class="tcard">
+    <div class="tcard-head">
+      <h2 id="tTitle">Selecciona un colaborador y mes para ver el reporte</h2>
+      <div class="actions">
+        <a id="btnExcel" class="download-btn disabled" href="#" download>Descargar Excel</a>
+      </div>
+    </div>
+    <div class="tcard-head" style="padding-top:0; border-top:0;">
+      <div class="legend">
+        <div class="leg"><span class="leg-dot dot-c"></span> Completo</div>
+        <div class="leg"><span class="leg-dot dot-i"></span> Incompleto</div>
+        <div class="leg"><span class="leg-dot dot-l"></span> Libre / sin registro</div>
+        <div class="leg"><span class="leg-dot dot-f"></span> Feriado</div>
+        <div class="leg"><span class="leg-dot" style="background:#f9a8d4"></span> Exceso descanso &gt; 50 min</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>Entrada</th>
+            <th>S. Desayuno</th>
+            <th>E. Desayuno</th>
+            <th>S. Almuerzo</th>
+            <th>E. Almuerzo</th>
+            <th>Salida</th>
+            <th>Desayuno</th>
+            <th>Almuerzo</th>
+            <th>Exceso 45m</th>
+            <th>Efectivo</th>
+            <th>Jornada</th>
+            <th>H. Extra</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr>
+            <td colspan="14">
+              <div class="empty">
+                <div class="empty-icon">📋</div>
+                <p>Selecciona un colaborador y un mes para ver el reporte</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer id="footer"></footer>
+
+<script>
+const DATA = __DATA_JSON__;
+
+const selColab  = document.getElementById('selColab');
+const selMes    = document.getElementById('selMes');
+const tbody     = document.getElementById('tbody');
+const tTitle    = document.getElementById('tTitle');
+const statsWrap = document.getElementById('statsWrap');
+const footer    = document.getElementById('footer');
+const btnExcel  = document.getElementById('btnExcel');
+
+// ── Config de descansos
+const CFG = DATA.config;
+footer.textContent =
+  `Generado el ${new Date().toLocaleDateString('es', {year:'numeric',month:'long',day:'numeric'})}` +
+  ` · Desayuno: ${CFG.desayuno_min} min · Almuerzo: ${CFG.almuerzo_min} min` +
+  ` · Jornada: L-V ${fmtH(CFG.jornada_lunes_viernes_min)} · Sáb ${fmtH(CFG.jornada_sabado_min)}`;
+
+// ── Poblar selects
+DATA.colaboradores.forEach(c => {
+  selColab.insertAdjacentHTML('beforeend', `<option value="${esc(c)}">${title(c)}</option>`);
+});
+DATA.meses.forEach(m => {
+  selMes.insertAdjacentHTML('beforeend', `<option value="${esc(m.value)}">${esc(m.label)}</option>`);
+});
+
+// Auto-seleccionar primeros valores
+if (DATA.meses.length)         selMes.value   = DATA.meses[0].value;
+if (DATA.colaboradores.length) selColab.value = DATA.colaboradores[0];
+
+selColab.addEventListener('change', render);
+selMes.addEventListener('change', render);
+render();
+
+// ── Funciones
+function render() {
+  const colab = selColab.value;
+  const mes   = selMes.value;
+
+  if (!colab || !mes) {
+    showEmpty('📋', 'Selecciona un colaborador y un mes');
+    statsWrap.style.display = 'none';
+    resetActions();
+    return;
+  }
+
+  const mesData = DATA.datos?.[colab]?.[mes];
+  if (!mesData) {
+    showEmpty('🔍', 'Sin datos para este colaborador en este mes');
+    statsWrap.style.display = 'none';
+    resetActions();
+    return;
+  }
+
+  const mesLabel = DATA.meses.find(m => m.value === mes)?.label ?? mes;
+  tTitle.textContent = `${title(colab)}  ·  ${mesLabel}`;
+
+  // Stats
+  const r = mesData.resumen;
+  document.getElementById('stComp').textContent       = r.completos;
+  document.getElementById('stIncomp').textContent     = r.incompletos;
+  document.getElementById('stLibre').textContent      = r.libres;
+  document.getElementById('stLibreSub').textContent   = r.feriados ? `${r.feriados} feriado${r.feriados !== 1 ? 's' : ''}` : '';
+  document.getElementById('stExcesoDesc').textContent = fmtH(r.total_exceso_descanso);
+  document.getElementById('stHorasExtra').textContent = fmtH(r.total_horas_extra);
+  document.getElementById('stTotEf').textContent      = fmtH(r.total_efectivo);
+  document.getElementById('stTotJor').textContent     = `Jornada total: ${fmtH(r.total_jornada)}`;
+  document.getElementById('stPromEf').textContent     = fmtH(r.prom_efectivo);
+  document.getElementById('stPromJor').textContent    = `Jornada prom: ${fmtH(r.prom_jornada)}`;
+  statsWrap.style.display = 'grid';
+
+  btnExcel.href = mesData.excel_file || '#';
+  btnExcel.download = buildExcelName(colab, mesLabel);
+  btnExcel.classList.toggle('disabled', !mesData.excel_file);
+
+  // Filas
+  tbody.innerHTML = mesData.dias.map(d => {
+    const libre      = d.estado === 'libre';
+    const esFeriado  = libre && !!d.motivo_feriado;
+    const exceso     = !libre && d.resaltar_descanso;
+
+    const badgeCls = esFeriado ? 'bf' : ({completo:'bc', incompleto:'bi', libre:'bl'}[d.estado] ?? 'bl');
+    const badgeTxt = esFeriado ? `🗓 ${d.motivo_feriado}` : ({completo:'✓ Completo', incompleto:'⚠ Incompleto', libre:'Libre'}[d.estado] ?? d.estado);
+
+    const rowCls = [d.estado, exceso ? 'exceso-descanso' : '', esFeriado ? 'feriado' : ''].join(' ').trim();
+
+    const t = (v) => v ? `<span class="mono">${v}</span>` : nd();
+    const dur = (v, extra='') =>
+      v !== null && v !== undefined
+        ? `<span class="mono ${extra}">${fmtMin(v)}</span>`
+        : nd();
+
+    const alertCls = exceso ? 'alert-cell' : '';
+    const desayunoCell = libre ? nd() : `<span class="mono ${alertCls}">${d.t_desayuno !== null ? fmtMin(d.t_desayuno) : '—'}</span>`;
+    const almuerzoCell = libre ? nd() : `<span class="mono ${alertCls}">${d.t_almuerzo !== null ? fmtMin(d.t_almuerzo) : '—'}</span>`;
+    const excesoCell = libre
+      ? nd()
+      : d.exceso_descanso !== null && d.exceso_descanso > 0
+        ? `<span class="mono ${alertCls}">+${fmtMin(d.exceso_descanso)}</span>`
+        : `<span class="nd">—</span>`;
+
+    // Horas extra
+    let extraCell = nd();
+    if (!libre && d.horas_extra !== null) {
+      extraCell = d.horas_extra > 0
+        ? `<span class="mono extra-val">+${fmtMin(d.horas_extra)}</span>`
+        : `<span class="nd">—</span>`;
+    }
+
+    return `<tr class="${rowCls}">
+      <td>
+        <div class="fecha-cell">
+          <span class="dow">${d.dow}</span>
+          <span class="dnum">${d.dia}</span>
+        </div>
+      </td>
+      <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
+      <td>${libre ? nd() : t(d.entrada)}</td>
+      <td>${libre ? nd() : t(d.sal_des)}</td>
+      <td>${libre ? nd() : t(d.ent_des)}</td>
+      <td>${libre ? nd() : t(d.sal_alm)}</td>
+      <td>${libre ? nd() : t(d.ent_alm)}</td>
+      <td>${libre ? nd() : t(d.salida)}</td>
+      <td>${desayunoCell}</td>
+      <td>${almuerzoCell}</td>
+      <td>${excesoCell}</td>
+      <td>${libre ? nd() : dur(d.t_efectivo, 'ef')}</td>
+      <td>${libre ? nd() : dur(d.t_jornada)}</td>
+      <td>${extraCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+function resetActions() {
+  btnExcel.href = '#';
+  btnExcel.classList.add('disabled');
+}
+
+function showEmpty(icon, msg) {
+  tbody.innerHTML = `<tr><td colspan="14"><div class="empty">
+    <div class="empty-icon">${icon}</div><p>${msg}</p></div></td></tr>`;
+}
+
+function nd() { return '<span class="nd">—</span>'; }
+
+function fmtMin(min) {
+  if (min === null || min === undefined) return '—';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m`;
+}
+
+function fmtH(min) {
+  if (!min && min !== 0) return '—';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m`;
+}
+
+function title(str) {
+  return str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+}
+
+function buildExcelName(colab, mesLabel) {
+  return `reporte_biometrico_${slug(colab)}_${slug(mesLabel)}.xlsx`;
+}
+
+function slug(str) {
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

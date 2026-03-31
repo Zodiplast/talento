@@ -1,6 +1,10 @@
 polars
-fastexcel       # leer .xlsx con polars (pl.read_excel)
-openpyxl        # escribir .xlsx
+fastexcel           # leer .xlsx con polars (pl.read_excel)
+openpyxl            # escribir .xlsx
+fastapi
+uvicorn[standard]
+psycopg2-binary     # driver PostgreSQL (sin compilar libpq)
+python-multipart    # para UploadFile en FastAPI
 python-dotenv
 google-generativeai
 anthropic

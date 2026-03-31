@@ -1,0 +1,29 @@
+services:
+  talento-bio:
+    build: .
+    container_name: talento-bio
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8010:8000"      # solo localhost; Nginx o Dokploy proxea externamente
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-global:5432/${POSTGRES_DB}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+    volumes:
+      - bio_reports:/app/reports   # Excel generados (persisten entre reinicios)
+      - ./raw:/app/raw:ro          # feriados_horarios.xlsx (solo lectura)
+    networks:
+      - postgres-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  bio_reports:
+
+networks:
+  postgres-network:
+    external: true
+    name: postgres-network
