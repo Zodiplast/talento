@@ -2,7 +2,8 @@
 reporte_web.py — Genera reporte HTML interactivo del biométrico.
 
 Uso (desde la carpeta talento/):
-    python biometrico/reporte_web.py
+    python main.py            → menú principal, opción 1
+    python biometrico/reporte_web.py   → ejecución directa
   → genera reports/biometrico/reporte_biometrico.html
 
 Abre el HTML resultante en cualquier navegador.
@@ -16,8 +17,13 @@ from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
+# Permite ejecutar directamente: python biometrico/reporte_web.py
+_ROOT = Path(__file__).parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 import polars as pl
-from horarios import (
+from biometrico.horarios import (
     ALMUERZO_MIN,
     DESAYUNO_MIN,
     DESCANSO_MAX_MIN,
@@ -27,7 +33,7 @@ from horarios import (
 )
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from schemas.paths import (
+from biometrico.schemas.paths import (
     EXCEL_REPORTS_DIR,
     RAW_BIOMETRICO_DIR,
     RAW_FERIADOS_PATH,
@@ -200,6 +206,50 @@ def procesar_dia(fecha: date, marcas: list) -> dict:
     }
 
 
+def _normalizar_columnas(df: pl.DataFrame) -> pl.DataFrame:
+    """Renombra columnas con encoding corrupto a sus equivalentes correctos.
+
+    Los archivos .xls antiguos a veces entregan 'N�mero' en lugar de 'Número'
+    porque el acento no sobrevive la conversión de codepage del formato binario.
+    """
+    import unicodedata
+
+    mapeo: dict[str, str] = {}
+    objetivos = {"Número": r"n.mero", "Nombre": r"nombre", "Tiempo": r"tiempo"}
+    for col in df.columns:
+        col_norm = unicodedata.normalize("NFKD", col).encode("ascii", "ignore").decode().lower().strip()
+        for nombre_correcto, patron in objetivos.items():
+            import re
+            if re.fullmatch(patron, col_norm) and col != nombre_correcto:
+                mapeo[col] = nombre_correcto
+    if mapeo:
+        df = df.rename(mapeo)
+    return df
+
+
+def _leer_excel(arch: Path) -> pl.DataFrame | None:
+    """Lee un archivo .xlsx/.xls detectando automáticamente el nombre de la hoja.
+
+    Intenta primero 'Sheet', luego 'Sheet1', luego la primera hoja disponible.
+    Retorna None y loguea el error si el archivo no puede leerse.
+    """
+    candidatos = ["Sheet", "Sheet1", "Hoja1", "Hoja 1"]
+    df = None
+    for nombre_hoja in candidatos:
+        try:
+            df = pl.read_excel(arch, sheet_name=nombre_hoja)
+            break
+        except Exception:
+            continue
+    if df is None:
+        try:
+            df = pl.read_excel(arch)
+        except Exception as exc:
+            print(f"  [ERROR] No se pudo leer {arch.name}: {exc}")
+            return None
+    return _normalizar_columnas(df)
+
+
 def cargar_feriados() -> dict:
     """Carga feriados desde Excel. Retorna {fecha: motivo}."""
     if not RAW_FERIADOS_PATH.exists():
@@ -332,142 +382,161 @@ def cargar_datos() -> dict:
     feriados = cargar_feriados()
     datos_por_clave: dict[str, dict[str, dict]] = defaultdict(dict)
     nombre_por_clave: dict[str, str] = {}
+    meses_procesados: set[tuple[int, int]] = set()
 
     for (anio, mes_n), arch in sorted(meses_map.items()):
         mes_key = f"{anio}-{mes_n:02d}"
         print(f"  → Procesando {arch.name}  ({mes_key})")
 
-        df = pl.read_excel(arch, sheet_name="Sheet")
-        # Descartar filas con nombres corruptos (bytes de control o garbage del .xls)
-        df = df.filter(~pl.col("Nombre").str.contains(r"[\x00-\x1f\xff]"))
-        # Normalizar Tiempo: xlsx lo entrega como Datetime, xls como String "DD/MM/YYYY H:MM:SS"
-        if df["Tiempo"].dtype == pl.String:
-            df = df.with_columns(
-                pl.col("Tiempo").str.strptime(pl.Datetime, "%d/%m/%Y %H:%M:%S")
-            )
-        df = df.with_columns(
-            [
-                pl.col("Nombre")
-                .cast(pl.String)
-                .str.replace_all(r"\s+", " ")
-                .str.strip_chars()
-                .alias("nombre_norm"),
-                pl.col("Número")
-                .cast(pl.String)
-                .str.replace_all(r"\s+", "")
-                .str.strip_chars()
-                .alias("numero_norm"),
-                pl.col("Tiempo").cast(pl.Date).alias("fecha"),
-            ]
-        ).with_columns(
-            pl.when(pl.col("numero_norm").is_not_null() & (pl.col("numero_norm") != ""))
-            .then(pl.format("id:{}", pl.col("numero_norm")))
-            .otherwise(pl.format("nom:{}", pl.col("nombre_norm")))
-            .alias("colab_key")
-        )
+        try:
+            df = _leer_excel(arch)
+            if df is None:
+                continue
 
-        claves = sorted(df["colab_key"].unique().to_list())
-
-        for colab_key in claves:
-            sub_df = df.filter(pl.col("colab_key") == colab_key)
-            nombre_display = _pick_display_name(sub_df["nombre_norm"].to_list())
-            nombre_por_clave[colab_key] = nombre_display
-
-            sub = sub_df.sort(["fecha", "Tiempo"]).to_dicts()
-            sub = dedup(sub)
-
-            dias_marcas: dict[date, list] = defaultdict(list)
-            for f in sub:
-                dias_marcas[f["fecha"]].append(f["Tiempo"])
-
-            _, total_dias = calendar.monthrange(anio, mes_n)
-            dias_mes = []
-
-            for d in range(1, total_dias + 1):
-                fecha = date(anio, mes_n, d)
-                dow = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][fecha.weekday()]
-                marcas = sorted(dias_marcas.get(fecha, []))
-
-                if not marcas:
-                    estado = "libre"
-                    info = {
-                        "entrada": None,
-                        "sal_des": None,
-                        "ent_des": None,
-                        "sal_alm": None,
-                        "ent_alm": None,
-                        "salida": None,
-                        "t_desayuno": None,
-                        "t_almuerzo": None,
-                        "t_jornada": None,
-                        "t_efectivo": None,
-                        "jornada_objetivo": None,
-                        "exceso_desayuno": None,
-                        "exceso_almuerzo": None,
-                        "exceso_descanso": None,
-                        "horas_extra": None,
-                        "resaltar_descanso": False,
-                    }
-                else:
-                    info = procesar_dia(fecha, marcas)
-                    estado = (
-                        "completo"
-                        if (info["entrada"] and info["salida"])
-                        else "incompleto"
+            columnas = set(df.columns)
+            for col_req in ("Nombre", "Número", "Tiempo"):
+                if col_req not in columnas:
+                    raise ValueError(
+                        f"columna '{col_req}' no encontrada. "
+                        f"Columnas disponibles: {sorted(columnas)}"
                     )
 
-                dias_mes.append(
-                    {
-                        "fecha": fecha.strftime("%Y-%m-%d"),
-                        "dia": d,
-                        "dow": dow,
-                        "estado": estado,
-                        "motivo_feriado": feriados.get(fecha),
-                        **info,
-                    }
+            # Descartar filas con nombres corruptos (bytes de control o garbage del .xls)
+            df = df.filter(~pl.col("Nombre").str.contains(r"[\x00-\x1f\xff]"))
+            # Normalizar Tiempo: xlsx lo entrega como Datetime, xls como String "DD/MM/YYYY H:MM:SS"
+            if df["Tiempo"].dtype == pl.String:
+                df = df.with_columns(
+                    pl.col("Tiempo").str.strptime(pl.Datetime, "%d/%m/%Y %H:%M:%S")
+                )
+            df = df.with_columns(
+                [
+                    pl.col("Nombre")
+                    .cast(pl.String)
+                    .str.replace_all(r"\s+", " ")
+                    .str.strip_chars()
+                    .alias("nombre_norm"),
+                    pl.col("Número")
+                    .cast(pl.String)
+                    .str.replace_all(r"\s+", "")
+                    .str.strip_chars()
+                    .alias("numero_norm"),
+                    pl.col("Tiempo").cast(pl.Date).alias("fecha"),
+                ]
+            ).with_columns(
+                pl.when(pl.col("numero_norm").is_not_null() & (pl.col("numero_norm") != ""))
+                .then(pl.format("id:{}", pl.col("numero_norm")))
+                .otherwise(pl.format("nom:{}", pl.col("nombre_norm")))
+                .alias("colab_key")
+            )
+
+            claves = sorted(df["colab_key"].unique().to_list())
+
+            for colab_key in claves:
+                sub_df = df.filter(pl.col("colab_key") == colab_key)
+                nombre_display = _pick_display_name(sub_df["nombre_norm"].to_list())
+                nombre_por_clave[colab_key] = nombre_display
+
+                sub = sub_df.sort(["fecha", "Tiempo"]).to_dicts()
+                sub = dedup(sub)
+
+                dias_marcas: dict[date, list] = defaultdict(list)
+                for f in sub:
+                    dias_marcas[f["fecha"]].append(f["Tiempo"])
+
+                _, total_dias = calendar.monthrange(anio, mes_n)
+                dias_mes = []
+
+                for d in range(1, total_dias + 1):
+                    fecha = date(anio, mes_n, d)
+                    dow = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][fecha.weekday()]
+                    marcas = sorted(dias_marcas.get(fecha, []))
+
+                    if not marcas:
+                        estado = "libre"
+                        info = {
+                            "entrada": None,
+                            "sal_des": None,
+                            "ent_des": None,
+                            "sal_alm": None,
+                            "ent_alm": None,
+                            "salida": None,
+                            "t_desayuno": None,
+                            "t_almuerzo": None,
+                            "t_jornada": None,
+                            "t_efectivo": None,
+                            "jornada_objetivo": None,
+                            "exceso_desayuno": None,
+                            "exceso_almuerzo": None,
+                            "exceso_descanso": None,
+                            "horas_extra": None,
+                            "resaltar_descanso": False,
+                        }
+                    else:
+                        info = procesar_dia(fecha, marcas)
+                        estado = (
+                            "completo"
+                            if (info["entrada"] and info["salida"])
+                            else "incompleto"
+                        )
+
+                    dias_mes.append(
+                        {
+                            "fecha": fecha.strftime("%Y-%m-%d"),
+                            "dia": d,
+                            "dow": dow,
+                            "estado": estado,
+                            "motivo_feriado": feriados.get(fecha),
+                            **info,
+                        }
+                    )
+
+                comp = sum(1 for d in dias_mes if d["estado"] == "completo")
+                incomp = sum(1 for d in dias_mes if d["estado"] == "incompleto")
+                libre = sum(1 for d in dias_mes if d["estado"] == "libre")
+                feriados_count = sum(
+                    1 for d in dias_mes if d.get("motivo_feriado") is not None
+                )
+                t_ef = sum(d["t_efectivo"] or 0 for d in dias_mes)
+                t_jor = sum(d["t_jornada"] or 0 for d in dias_mes)
+                t_exceso_desc = sum(d["exceso_descanso"] or 0 for d in dias_mes)
+                t_extra = sum(d["horas_extra"] or 0 for d in dias_mes)
+
+                mes_label = f"{MESES_ES_INV[mes_n]} {anio}"
+                resumen = {
+                    "completos": comp,
+                    "incompletos": incomp,
+                    "libres": libre,
+                    "feriados": feriados_count,
+                    "total_efectivo": round(t_ef),
+                    "total_jornada": round(t_jor),
+                    "prom_efectivo": round(t_ef / comp) if comp else 0,
+                    "prom_jornada": round(t_jor / comp) if comp else 0,
+                    "total_exceso_descanso": round(t_exceso_desc),
+                    "total_horas_extra": round(t_extra),
+                }
+
+                mes_payload = {
+                    "dias": dias_mes,
+                    "resumen": resumen,
+                }
+                mes_payload["excel_file"] = generar_excel_colaborador(
+                    colaborador=nombre_display,
+                    mes_key=mes_key,
+                    mes_label=mes_label,
+                    mes_data=mes_payload,
                 )
 
-            comp = sum(1 for d in dias_mes if d["estado"] == "completo")
-            incomp = sum(1 for d in dias_mes if d["estado"] == "incompleto")
-            libre = sum(1 for d in dias_mes if d["estado"] == "libre")
-            feriados_count = sum(
-                1 for d in dias_mes if d.get("motivo_feriado") is not None
-            )
-            t_ef = sum(d["t_efectivo"] or 0 for d in dias_mes)
-            t_jor = sum(d["t_jornada"] or 0 for d in dias_mes)
-            t_exceso_desc = sum(d["exceso_descanso"] or 0 for d in dias_mes)
-            t_extra = sum(d["horas_extra"] or 0 for d in dias_mes)
+                datos_por_clave[colab_key][mes_key] = mes_payload
 
-            mes_label = f"{MESES_ES_INV[mes_n]} {anio}"
-            resumen = {
-                "completos": comp,
-                "incompletos": incomp,
-                "libres": libre,
-                "feriados": feriados_count,
-                "total_efectivo": round(t_ef),
-                "total_jornada": round(t_jor),
-                "prom_efectivo": round(t_ef / comp) if comp else 0,
-                "prom_jornada": round(t_jor / comp) if comp else 0,
-                "total_exceso_descanso": round(t_exceso_desc),
-                "total_horas_extra": round(t_extra),
-            }
+            meses_procesados.add((anio, mes_n))
 
-            mes_payload = {
-                "dias": dias_mes,
-                "resumen": resumen,
-            }
-            mes_payload["excel_file"] = generar_excel_colaborador(
-                colaborador=nombre_display,
-                mes_key=mes_key,
-                mes_label=mes_label,
-                mes_data=mes_payload,
-            )
-
-            datos_por_clave[colab_key][mes_key] = mes_payload
+        except Exception as exc:
+            print(f"  [ERROR] Falló procesando {arch.name}: {exc}")
+            print(f"          Este mes será omitido del reporte.")
 
     meses_lista = [
         {"label": f"{MESES_ES_INV[mes_n]} {anio}", "value": f"{anio}-{mes_n:02d}"}
-        for (anio, mes_n) in sorted(meses_map.keys())
+        for (anio, mes_n) in sorted(meses_procesados)
     ]
 
     etiquetas_usadas: set[str] = set()
@@ -501,12 +570,6 @@ def cargar_datos() -> dict:
     }
 
 
-# ── Plantilla HTML ─────────────────────────────────────────────────────────────
-
-TEMPLATE_PATH = Path(__file__).parent / "reporte_template.html"
-HTML = TEMPLATE_PATH.read_text(encoding="utf-8")
-
-
 # ── Punto de entrada ───────────────────────────────────────────────────────────
 
 
@@ -523,9 +586,10 @@ def main() -> None:
         f"  Meses:         {n_meses}  ({', '.join(m['label'] for m in datos['meses'])})"
     )
 
-    # Inyectar datos en el HTML
+    template_path = Path(__file__).parent / "reporte_template.html"
+    html_template = template_path.read_text(encoding="utf-8")
     json_str = json.dumps(datos, ensure_ascii=False, separators=(",", ":"))
-    html = HTML.replace("__DATA_JSON__", json_str)
+    html = html_template.replace("__DATA_JSON__", json_str)
 
     OUTPUT_HTML.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_HTML.write_text(html, encoding="utf-8")
