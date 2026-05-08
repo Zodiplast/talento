@@ -10,8 +10,11 @@ from pathlib import Path
 
 # Asegura que el root del proyecto esté en sys.path al correr directamente
 ROOT = Path(__file__).parent
+TALENTO_ROOT = ROOT.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(TALENTO_ROOT) not in sys.path:
+    sys.path.insert(0, str(TALENTO_ROOT))
 
 
 def _sep(ancho: int = 45) -> None:
@@ -19,7 +22,8 @@ def _sep(ancho: int = 45) -> None:
 
 
 def generar_reporte() -> None:
-    from biometrico.reporte_web import main
+    from doc.reporte_web import main
+
     main()
 
 

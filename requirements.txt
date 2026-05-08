@@ -1,8 +1,7 @@
-polars
-fastexcel           # leer .xlsx con polars (pl.read_excel)
-openpyxl            # escribir .xlsx
-fastapi
+pyzk       # leer biométrico ZKTeco vía TCP (puerto 4370)
+openpyxl   # escribir .xlsx
+polars     # parquet (sync) + reporte_core
+duckdb     # MotherDuck (md:...) y consultas locales
+pyyaml     # raw/reglas/colaboradores.yaml
+fastapi    # servicio web reports/biometrico
 uvicorn[standard]
-psycopg2-binary     # driver PostgreSQL (sin compilar libpq)
-python-multipart    # para UploadFile en FastAPI
-python-dotenv

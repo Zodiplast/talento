@@ -1,28 +1,23 @@
 """
-reporte_web.py — Genera reporte HTML interactivo del biométrico.
+reporte_core.py — Lógica única del reporte biométrico (Excel/Parquet → JSON plantilla).
 
-Uso (desde la carpeta talento/):
-    python main.py            → menú principal, opción 1
-    python biometrico/reporte_web.py   → ejecución directa
-  → genera reports/biometrico/reporte_biometrico.html
-
-Abre el HTML resultante en cualquier navegador.
-La configuración de descansos y turnos está en biometrico/horarios.py.
+Usado por doc/reporte_web.py (CLI), webapp FastAPI y futuros jobs. No importa alexa/.
 """
+
+from __future__ import annotations
 
 import calendar
 import json
-import sys
 from collections import Counter, defaultdict
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
-
-# Permite ejecutar directamente: python biometrico/reporte_web.py
-_ROOT = Path(__file__).parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from typing import Any
 
 import polars as pl
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+
 from biometrico.horarios import (
     ALMUERZO_MIN,
     DESAYUNO_MIN,
@@ -31,50 +26,66 @@ from biometrico.horarios import (
     JORNADA_SABADO_MIN,
     get_jornada_objetivo_min,
 )
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
 from biometrico.schemas.paths import (
+    COLLABORATORS_CONFIG_PATH,
     EXCEL_REPORTS_DIR,
     RAW_BIOMETRICO_DIR,
+    RAW_BIOMETRICO_PARQUET_DIR,
     RAW_FERIADOS_PATH,
+    REPORT_TEMPLATE_HTML,
     WEB_REPORT_HTML,
     build_excel_report_path,
 )
 
-sys.stdout.reconfigure(encoding="utf-8")
-
-# ── Configuración ──────────────────────────────────────────────────────────────
 UMBRAL_DUPLICADO_MIN = 5
-RAW_DIR = RAW_BIOMETRICO_DIR
-OUTPUT_HTML = WEB_REPORT_HTML
 
-MESES_ES = {
-    "ENERO": 1,
-    "FEBRERO": 2,
-    "MARZO": 3,
-    "ABRIL": 4,
-    "MAYO": 5,
-    "JUNIO": 6,
-    "JULIO": 7,
-    "AGOSTO": 8,
-    "SEPTIEMBRE": 9,
-    "OCTUBRE": 10,
-    "NOVIEMBRE": 11,
-    "DICIEMBRE": 12,
+MESES_ES: dict[str, int] = {
+    "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
+    "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12,
 }
-MESES_ES_INV = {v: k.capitalize() for k, v in MESES_ES.items()}
+MESES_ES_INV: dict[int, str] = {v: k.capitalize() for k, v in MESES_ES.items()}
 
-# ── Helpers de procesamiento ───────────────────────────────────────────────────
+
+@dataclass
+class CollaboratorExclusions:
+    exclude_colab_keys: set[str] = field(default_factory=set)
+    exclude_numeros: set[str] = field(default_factory=set)
+    exclude_name_contains: list[str] = field(default_factory=list)
+
+
+def load_collaborator_exclusions(path: Path | None = None) -> CollaboratorExclusions:
+    p = path or COLLABORATORS_CONFIG_PATH
+    if not p.exists():
+        return CollaboratorExclusions()
+    try:
+        import yaml
+    except ImportError:
+        print("  [WARN] pyyaml no instalado; ignorando colaboradores.yaml")
+        return CollaboratorExclusions()
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    keys = {str(x) for x in raw.get("exclude_colab_keys") or []}
+    nums = {str(x) for x in raw.get("exclude_numeros") or []}
+    subs = [str(x) for x in raw.get("exclude_name_contains") or []]
+    return CollaboratorExclusions(
+        exclude_colab_keys=keys,
+        exclude_numeros=nums,
+        exclude_name_contains=subs,
+    )
+
+
+def _colab_excluded(clab_key: str, nombre_display: str, ex: CollaboratorExclusions) -> bool:
+    if clab_key in ex.exclude_colab_keys:
+        return True
+    if clab_key.startswith("id:") and clab_key[3:] in ex.exclude_numeros:
+        return True
+    low = nombre_display.lower()
+    for sub in ex.exclude_name_contains:
+        if sub and sub.lower() in low:
+            return True
+    return False
 
 
 def parse_mes(nombre: str) -> tuple[int, int] | None:
-    """Extrae (año, mes_num) del nombre del archivo.
-
-    Soporta formatos:
-    - 'ENERO-2026.xlsx'       → partes: [MES, AÑO]
-    - 'BIO-MARZO-2026.xlsx'   → partes: [PREFIX, MES, AÑO]
-    Busca el primer token que sea un mes válido y toma el siguiente como año.
-    """
     stem = Path(nombre).stem.upper()
     parts = stem.split("-")
     for i, part in enumerate(parts):
@@ -87,8 +98,7 @@ def parse_mes(nombre: str) -> tuple[int, int] | None:
 
 
 def dedup(filas: list[dict]) -> list[dict]:
-    """Elimina marcaciones duplicadas dentro del mismo día (< umbral minutos)."""
-    out = []
+    out: list[dict] = []
     for i, f in enumerate(filas):
         if i == 0:
             out.append(f)
@@ -114,7 +124,6 @@ def fmt_minutos_legible(minutos: float | None) -> str:
 
 
 def _pick_display_name(nombres: list[str]) -> str:
-    """Escoge nombre representativo priorizando frecuencia y longitud."""
     limpios = [n for n in nombres if n]
     if not limpios:
         return "SIN NOMBRE"
@@ -123,15 +132,10 @@ def _pick_display_name(nombres: list[str]) -> str:
 
 
 def _to_title_name(nombre: str) -> str:
-    """Formatea un nombre para mostrarlo en estilo título."""
     return " ".join(p.capitalize() for p in nombre.split())
 
 
 def procesar_dia(fecha: date, marcas: list) -> dict:
-    """
-    Asigna roles a las marcaciones del día y calcula duraciones.
-    Misma lógica que main.py.
-    """
     n = len(marcas)
     entrada = salida = sal_des = ent_des = sal_alm = ent_alm = None
 
@@ -144,7 +148,7 @@ def procesar_dia(fecha: date, marcas: list) -> dict:
     elif n == 4:
         sal_alm, ent_alm = marcas[1], marcas[2]
     elif n == 5:
-        sal_des = marcas[1]  # desayuno sin entrada registrada
+        sal_des = marcas[1]
         sal_alm, ent_alm = marcas[2], marcas[3]
     elif n >= 6:
         sal_des, ent_des = marcas[1], marcas[2]
@@ -207,19 +211,16 @@ def procesar_dia(fecha: date, marcas: list) -> dict:
 
 
 def _normalizar_columnas(df: pl.DataFrame) -> pl.DataFrame:
-    """Renombra columnas con encoding corrupto a sus equivalentes correctos.
-
-    Los archivos .xls antiguos a veces entregan 'N�mero' en lugar de 'Número'
-    porque el acento no sobrevive la conversión de codepage del formato binario.
-    """
+    import re
     import unicodedata
 
     mapeo: dict[str, str] = {}
     objetivos = {"Número": r"n.mero", "Nombre": r"nombre", "Tiempo": r"tiempo"}
     for col in df.columns:
-        col_norm = unicodedata.normalize("NFKD", col).encode("ascii", "ignore").decode().lower().strip()
+        col_norm = (
+            unicodedata.normalize("NFKD", col).encode("ascii", "ignore").decode().lower().strip()
+        )
         for nombre_correcto, patron in objetivos.items():
-            import re
             if re.fullmatch(patron, col_norm) and col != nombre_correcto:
                 mapeo[col] = nombre_correcto
     if mapeo:
@@ -228,11 +229,6 @@ def _normalizar_columnas(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _leer_excel(arch: Path) -> pl.DataFrame | None:
-    """Lee un archivo .xlsx/.xls detectando automáticamente el nombre de la hoja.
-
-    Intenta primero 'Sheet', luego 'Sheet1', luego la primera hoja disponible.
-    Retorna None y loguea el error si el archivo no puede leerse.
-    """
     candidatos = ["Sheet", "Sheet1", "Hoja1", "Hoja 1"]
     df = None
     for nombre_hoja in candidatos:
@@ -250,12 +246,37 @@ def _leer_excel(arch: Path) -> pl.DataFrame | None:
     return _normalizar_columnas(df)
 
 
-def cargar_feriados() -> dict:
-    """Carga feriados desde Excel. Retorna {fecha: motivo}."""
-    if not RAW_FERIADOS_PATH.exists():
-        print(f"  [WARN] Archivo de feriados no encontrado: {RAW_FERIADOS_PATH}")
+def _leer_parquet(arch: Path) -> pl.DataFrame | None:
+    try:
+        df = pl.read_parquet(arch)
+    except Exception as exc:
+        print(f"  [ERROR] No se pudo leer {arch.name}: {exc}")
+        return None
+    low = {c.lower(): c for c in df.columns}
+    rename: dict[str, str] = {}
+    if "numero" in low and "Número" not in df.columns:
+        rename[low["numero"]] = "Número"
+    if "nombre" in low and "Nombre" not in df.columns:
+        rename[low["nombre"]] = "Nombre"
+    if "tiempo" in low and "Tiempo" not in df.columns:
+        rename[low["tiempo"]] = "Tiempo"
+    if rename:
+        df = df.rename(rename)
+    return _normalizar_columnas(df)
+
+
+def _leer_archivo_mes(arch: Path) -> pl.DataFrame | None:
+    if arch.suffix.lower() == ".parquet":
+        return _leer_parquet(arch)
+    return _leer_excel(arch)
+
+
+def cargar_feriados(feriados_path: Path | None = None) -> dict:
+    path = feriados_path or RAW_FERIADOS_PATH
+    if not path.exists():
+        print(f"  [WARN] Archivo de feriados no encontrado: {path}")
         return {}
-    df = pl.read_excel(RAW_FERIADOS_PATH, sheet_name="feriados")
+    df = pl.read_excel(path, sheet_name="feriados")
     return {
         row["Fecha"]: row["Motivo del Feriado"]
         for row in df.to_dicts()
@@ -364,22 +385,41 @@ def generar_excel_colaborador(
     return output_path.relative_to(WEB_REPORT_HTML.parent).as_posix()
 
 
-# ── Carga y procesamiento de todos los archivos ────────────────────────────────
+def _collect_month_files(
+    raw_dir: Path,
+    pq_dir: Path,
+) -> dict[tuple[int, int], Path]:
+    """Por cada (año, mes) elige Parquet si existe; si no, Excel."""
+    out: dict[tuple[int, int], Path] = {}
+    for arch in sorted(raw_dir.glob("*.xlsx")) + sorted(raw_dir.glob("*.xls")):
+        if arch.name.startswith("~$"):
+            continue
+        k = parse_mes(arch.name)
+        if k:
+            out[k] = arch
+    for arch in sorted(pq_dir.glob("*.parquet")):
+        k = parse_mes(arch.name)
+        if k:
+            out[k] = arch
+    return out
 
 
-def cargar_datos() -> dict:
-    archivos = sorted({*RAW_DIR.glob("*.xlsx"), *RAW_DIR.glob("*.xls")})
-    archivos = [a for a in archivos if not a.name.startswith("~$")]
-    if not archivos:
-        print(f"[ERROR] No hay archivos .xlsx en {RAW_DIR.resolve()}")
-        sys.exit(1)
-
-    meses_map = {parse_mes(a.name): a for a in archivos if parse_mes(a.name)}
+def build_report_payload(
+    raw_dir: Path | None = None,
+    pq_dir: Path | None = None,
+    feriados_path: Path | None = None,
+    collaborators_path: Path | None = None,
+) -> dict[str, Any]:
+    raw_dir = raw_dir or RAW_BIOMETRICO_DIR
+    pq_dir = pq_dir or RAW_BIOMETRICO_PARQUET_DIR
+    meses_map = _collect_month_files(raw_dir, pq_dir)
     if not meses_map:
-        print("[ERROR] Ningún archivo tiene el formato MESNAME-YYYY.xlsx")
-        sys.exit(1)
+        msg = f"No hay .xlsx/.xls en {raw_dir} ni .parquet en {pq_dir}"
+        print(f"[ERROR] {msg}")
+        raise FileNotFoundError(msg)
 
-    feriados = cargar_feriados()
+    feriados = cargar_feriados(feriados_path)
+    exclusions = load_collaborator_exclusions(collaborators_path)
     datos_por_clave: dict[str, dict[str, dict]] = defaultdict(dict)
     nombre_por_clave: dict[str, str] = {}
     meses_procesados: set[tuple[int, int]] = set()
@@ -389,7 +429,7 @@ def cargar_datos() -> dict:
         print(f"  → Procesando {arch.name}  ({mes_key})")
 
         try:
-            df = _leer_excel(arch)
+            df = _leer_archivo_mes(arch)
             if df is None:
                 continue
 
@@ -401,9 +441,7 @@ def cargar_datos() -> dict:
                         f"Columnas disponibles: {sorted(columnas)}"
                     )
 
-            # Descartar filas con nombres corruptos (bytes de control o garbage del .xls)
             df = df.filter(~pl.col("Nombre").str.contains(r"[\x00-\x1f\xff]"))
-            # Normalizar Tiempo: xlsx lo entrega como Datetime, xls como String "DD/MM/YYYY H:MM:SS"
             if df["Tiempo"].dtype == pl.String:
                 df = df.with_columns(
                     pl.col("Tiempo").str.strptime(pl.Datetime, "%d/%m/%Y %H:%M:%S")
@@ -424,8 +462,8 @@ def cargar_datos() -> dict:
                 ]
             ).with_columns(
                 pl.when(pl.col("numero_norm").is_not_null() & (pl.col("numero_norm") != ""))
-                .then(pl.format("id:{}", pl.col("numero_norm")))
-                .otherwise(pl.format("nom:{}", pl.col("nombre_norm")))
+                .then(pl.concat_str([pl.lit("id:"), pl.col("numero_norm")], separator=""))
+                .otherwise(pl.concat_str([pl.lit("nom:"), pl.col("nombre_norm")], separator=""))
                 .alias("colab_key")
             )
 
@@ -434,6 +472,8 @@ def cargar_datos() -> dict:
             for colab_key in claves:
                 sub_df = df.filter(pl.col("colab_key") == colab_key)
                 nombre_display = _pick_display_name(sub_df["nombre_norm"].to_list())
+                if _colab_excluded(colab_key, nombre_display, exclusions):
+                    continue
                 nombre_por_clave[colab_key] = nombre_display
 
                 sub = sub_df.sort(["fecha", "Tiempo"]).to_dicts()
@@ -450,6 +490,7 @@ def cargar_datos() -> dict:
                     fecha = date(anio, mes_n, d)
                     dow = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][fecha.weekday()]
                     marcas = sorted(dias_marcas.get(fecha, []))
+                    marcaciones_hhmm = [m.strftime("%H:%M") for m in marcas]
 
                     if not marcas:
                         estado = "libre"
@@ -486,6 +527,7 @@ def cargar_datos() -> dict:
                             "dow": dow,
                             "estado": estado,
                             "motivo_feriado": feriados.get(fecha),
+                            "marcaciones": marcaciones_hhmm,
                             **info,
                         }
                     )
@@ -493,9 +535,7 @@ def cargar_datos() -> dict:
                 comp = sum(1 for d in dias_mes if d["estado"] == "completo")
                 incomp = sum(1 for d in dias_mes if d["estado"] == "incompleto")
                 libre = sum(1 for d in dias_mes if d["estado"] == "libre")
-                feriados_count = sum(
-                    1 for d in dias_mes if d.get("motivo_feriado") is not None
-                )
+                feriados_count = sum(1 for d in dias_mes if d.get("motivo_feriado") is not None)
                 t_ef = sum(d["t_efectivo"] or 0 for d in dias_mes)
                 t_jor = sum(d["t_jornada"] or 0 for d in dias_mes)
                 t_exceso_desc = sum(d["exceso_descanso"] or 0 for d in dias_mes)
@@ -532,7 +572,7 @@ def cargar_datos() -> dict:
 
         except Exception as exc:
             print(f"  [ERROR] Falló procesando {arch.name}: {exc}")
-            print(f"          Este mes será omitido del reporte.")
+            print("          Este mes será omitido del reporte.")
 
     meses_lista = [
         {"label": f"{MESES_ES_INV[mes_n]} {anio}", "value": f"{anio}-{mes_n:02d}"}
@@ -570,33 +610,26 @@ def cargar_datos() -> dict:
     }
 
 
-# ── Punto de entrada ───────────────────────────────────────────────────────────
-
-
-def main() -> None:
-    print("Reporte Biométrico Web")
-    print("─" * 40)
+def write_html_report(
+    output_html: Path | None = None,
+    template_path: Path | None = None,
+    **payload_kwargs: Any,
+) -> Path:
+    output_html = output_html or WEB_REPORT_HTML
+    template_path = template_path or REPORT_TEMPLATE_HTML
     EXCEL_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    datos = cargar_datos()
+    datos = build_report_payload(**payload_kwargs)
 
     n_colab = len(datos["colaboradores"])
     n_meses = len(datos["meses"])
     print(f"  Colaboradores: {n_colab}")
-    print(
-        f"  Meses:         {n_meses}  ({', '.join(m['label'] for m in datos['meses'])})"
-    )
+    print(f"  Meses:         {n_meses}  ({', '.join(m['label'] for m in datos['meses'])})")
 
-    template_path = Path(__file__).parent / "reporte_template.html"
     html_template = template_path.read_text(encoding="utf-8")
     json_str = json.dumps(datos, ensure_ascii=False, separators=(",", ":"))
     html = html_template.replace("__DATA_JSON__", json_str)
 
-    OUTPUT_HTML.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_HTML.write_text(html, encoding="utf-8")
-
-    print(f"\n  ✓ Reporte generado: {OUTPUT_HTML.resolve()}")
-    print("  Abre el archivo en tu navegador.\n")
-
-
-if __name__ == "__main__":
-    main()
+    output_html.parent.mkdir(parents=True, exist_ok=True)
+    output_html.write_text(html, encoding="utf-8")
+    print(f"\n  ✓ Reporte generado: {output_html.resolve()}")
+    return output_html

@@ -2,18 +2,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# psycopg2-binary incluye el driver compilado; no se necesita libpq-dev
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Código de la aplicación
-COPY app/        ./app/
-COPY biometrico/ ./biometrico/
-COPY migrations/ ./migrations/
+COPY biometrico ./biometrico
+COPY doc ./doc
+COPY raw ./raw
+COPY webapp ./webapp
+COPY reports ./reports
 
-# reports/ y raw/ se montan como volúmenes en docker-compose
-# (no se copian al imagen para no incluir datos sensibles)
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# El contenedor sirve datos montados o copiados en ./raw/biometrico* y ./raw/reglas
+EXPOSE 8080
+CMD ["uvicorn", "webapp.main:app", "--host", "0.0.0.0", "--port", "8080"]

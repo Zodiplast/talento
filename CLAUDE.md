@@ -1,60 +1,76 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Propósito
 
-## Commands
+Extractor de asistencia del biométrico ZKTeco (192.168.100.251:4370).
+Descarga el mes, guarda **Excel + Parquet**, opcionalmente **MotherDuck**, y genera el **reporte HTML** (CLI o **FastAPI** sin Postgres).
 
-```bash
-# Menú interactivo (reporte CLI, servidor, ver turnos)
-python main.py
+## Estructura
 
-# Desarrollo con 1Password + hot-reload
-bash dev.sh
-
-# Producción con Docker
-docker-compose up -d
-
-# Generar reporte HTML directamente (sin servidor)
-python biometrico/reporte_web.py
-
-# Instalar dependencias
-pip install -r requirements.txt
+```
+talento/
+├── biometrico/
+│   ├── sync_device.py        ← ZKTeco → raw/biometrico + raw/biometrico_parquet
+│   ├── upload_motherduck.py  ← Parquet → MotherDuck (esquema talento)
+│   ├── reporte_core.py       ← única lógica: Excel/Parquet → JSON plantilla
+│   ├── horarios.py           ← turnos / jornadas (duplicado lógico de doc/horarios.py)
+│   └── schemas/paths.py      ← rutas proyecto + slugify + reports/
+├── doc/
+│   ├── reporte_template.html ← UI (colaborador, mes, día, tabla)
+│   ├── reporte_web.py        ← CLI fino → reporte_core.write_html_report
+│   └── horarios.py           ← referencia / edición manual (alinear con biometrico/)
+├── webapp/main.py            ← FastAPI: / , /api/reporte.json , /api/dia.json , /health
+├── raw/biometrico/           ← Excel MES-YYYY.xlsx
+├── raw/biometrico_parquet/   ← Parquet MES-YYYY.parquet
+├── raw/reglas/
+│   ├── feriados_horarios.xlsx
+│   └── colaboradores.yaml    ← excluir inactivos del reporte
+├── reports/biometrico/       ← HTML generado + Excel por colaborador
+├── scripts/publish.ps1       ← pipeline ejemplo: sync → build → (MotherDuck)
+├── scripts/deploy/nginx-talento.example.conf
+├── Makefile
+├── Dockerfile
+└── alexa/                    ← legado; `alexa/main.py` delega a doc/reporte_web
 ```
 
-Variables de entorno requeridas (`DATABASE_URL`, `AUTH_PASSWORD` opcional) — ver `.env.example`.
+## Uso rápido
 
-## Arquitectura
+```bash
+uv pip install -r requirements.txt
 
-El proyecto tiene **dos modos de operación independientes** sobre la misma lógica de negocio:
+# 1) Sync (en PC con acceso al ZK)
+python biometrico/sync_device.py --mes mayo --anio 2026
 
-### Modo CLI (`biometrico/reporte_web.py`)
-Lee los Excel de `raw/biometrico/`, procesa todo en memoria y genera `reports/biometrico/reporte_biometrico.html` inyectando el JSON en el placeholder `__DATA_JSON__` de `biometrico/reporte_template.html`. No requiere base de datos.
+# 2) HTML estático
+python doc/reporte_web.py
+# → reports/biometrico/reporte_biometrico.html
 
-### Modo servidor (`app/main.py` → FastAPI)
-Recibe un Excel via `POST /upload`, lo procesa con `app/processor.py` y persiste en PostgreSQL (`talento.*` schema). `GET /` sirve el mismo HTML pero con datos de la BD. El template se carga una sola vez al arrancar (`lifespan`).
+# 3) Servicio web (lee raw/ cada request)
+#    Opcional: $env:AUTH_PASSWORD = "..."  (Basic auth)
+uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
+```
 
-### Flujo de procesamiento Excel (compartido)
-`parse_mes(filename)` → `_leer_excel()` / `process_excel_file()` → `dedup()` (5 min threshold) → `procesar_dia()` (asigna roles a marcas: entrada, sal_des, ent_des, sal_alm, ent_alm, salida) → cálculo de jornada, descansos y horas extra → `generar_excel_colaborador()` (2 hojas: Resumen + Detalle).
+### MotherDuck (opcional, BI / nube)
 
-La lógica de `procesar_dia()` asigna roles por **posición** de las marcas (n=1 solo entrada, n=4 almuerzo completo, n=6 desayuno+almuerzo completo, etc.).
+```powershell
+$env:MOTHERDUCK_TOKEN = "..."
+python biometrico/upload_motherduck.py --mes mayo --anio 2026
+```
 
-## Configuración de negocio
+Tabla `talento.marcaciones_raw` en la base `md:zodiplast`. El token **no** va en el navegador; un backend o herramienta con credenciales consulta MotherDuck (p. ej. DuckDB/Java en servidor).
 
-Todo lo que no es lógica de código está en **`biometrico/horarios.py`**: tiempos de descanso, jornadas por día de semana, catálogo de turnos. Editar ahí, no en el procesador.
+### Colaboradores inactivos
 
-Feriados vienen de `raw/reglas/feriados_horarios.xlsx` (hoja `feriados`, columnas `Fecha` y `Motivo del Feriado`).
+Editá `raw/reglas/colaboradores.yaml` (`exclude_numeros`, `exclude_colab_keys`, `exclude_name_contains`) y volvé a correr `doc/reporte_web.py` o el webapp.
 
-## Base de datos
+### Deploy (talento.zodiplast.com.ec)
 
-Schema `talento.*` en la instancia PostgreSQL compartida (para no colisionar con otros servicios). Las migraciones (`migrations/001_init.sql`) son idempotentes y se ejecutan automáticamente al arrancar vía `db.run_migration()`.
+1. **Docker**: `docker build -t talento-biometrico .` y montá volumen con `raw/` actualizado o copiá datos al build.
+2. **Nginx**: ver `scripts/deploy/nginx-talento.example.conf` (TLS + proxy a `:8080`).
+3. **Pipeline diario**: `scripts/publish.ps1 --mes mayo --anio 2026` (ajustá deploy al final; subdominio `talento.zodiplast.com.ec`).
 
-Tablas: `colaboradores`, `meses`, `asistencia_dias`, `resumen_mes`. La carga es atómica por mes: UPSERT de encabezados + DELETE+bulk INSERT de días.
+## Flujo de datos
 
-La clave de colaborador (`colab_key`) se construye como `id:<numero>` si tiene número de empleado, o `nom:<nombre_normalizado>` si no.
-
-## Convenciones
-
-- **Nombre de archivo Excel**: debe contener mes en español y año — `ENERO-2026.xlsx` o `BIO-MARZO-2026.xlsx`. `parse_mes()` busca el primer token válido como mes.
-- **Auth**: HTTP Basic Auth opcional. Si `AUTH_PASSWORD` está definido, aplica a todos los endpoints excepto `/health`. El usuario puede ser cualquier valor.
-- **Archivos `.xls` antiguos**: el procesador normaliza columnas con encoding corrupto (`_normalizar_columnas`) y parsea `Tiempo` como string `DD/MM/YYYY H:MM:SS`.
-- **Imports**: `biometrico/` es un paquete Python (tiene `__init__.py`). Usar imports absolutos (`from biometrico.horarios import ...`), no relativos.
+1. `sync_device` → Excel (reporte legacy) + Parquet (analítica / MotherDuck).
+2. `reporte_core.build_report_payload` lee **Parquet con prioridad sobre Excel** por mes si ambos existen.
+3. Plantilla `doc/reporte_template.html` consume el JSON (incluye `marcaciones` por día para el selector de día).

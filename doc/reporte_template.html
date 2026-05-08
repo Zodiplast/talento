@@ -464,6 +464,10 @@
       <label>Mes</label>
       <select id="selMes"><option value="">— Seleccionar —</option></select>
     </div>
+    <div class="ctrl">
+      <label>Día</label>
+      <select id="selDia"><option value="">Todo el mes</option></select>
+    </div>
   </div>
 </header>
 
@@ -520,6 +524,15 @@
         <div class="leg"><span class="leg-dot" style="background:#f9a8d4"></span> Exceso descanso &gt; 50 min</div>
       </div>
     </div>
+    <div id="dayDetail" class="tcard" style="display:none; margin-bottom: 18px;">
+      <div class="tcard-head" style="border-top:0;">
+        <h2 id="dayDetailTitle" style="font-size:15px;">Marcaciones del día</h2>
+      </div>
+      <div style="padding: 0 20px 18px; color: var(--slate-700);">
+        <p id="dayDetailMarks" class="mono" style="font-size:14px; line-height:1.6;"></p>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <table>
         <thead>
@@ -562,7 +575,11 @@ const DATA = __DATA_JSON__;
 
 const selColab  = document.getElementById('selColab');
 const selMes    = document.getElementById('selMes');
+const selDia    = document.getElementById('selDia');
 const tbody     = document.getElementById('tbody');
+const dayDetail = document.getElementById('dayDetail');
+const dayDetailTitle = document.getElementById('dayDetailTitle');
+const dayDetailMarks = document.getElementById('dayDetailMarks');
 const tTitle    = document.getElementById('tTitle');
 const statsWrap = document.getElementById('statsWrap');
 const footer    = document.getElementById('footer');
@@ -587,8 +604,20 @@ DATA.meses.forEach(m => {
 if (DATA.meses.length)         selMes.value   = DATA.meses[0].value;
 if (DATA.colaboradores.length) selColab.value = DATA.colaboradores[0];
 
-selColab.addEventListener('change', render);
-selMes.addEventListener('change', render);
+function fillDaySelect(mesData) {
+  const prev = selDia.value;
+  selDia.innerHTML = '<option value="">Todo el mes</option>';
+  if (!mesData || !mesData.dias) return;
+  mesData.dias.forEach(d => {
+    const label = `${d.dow} ${d.dia} · ${d.fecha}`;
+    selDia.insertAdjacentHTML('beforeend', `<option value="${esc(d.fecha)}">${esc(label)}</option>`);
+  });
+  if (prev && [...selDia.options].some(o => o.value === prev)) selDia.value = prev;
+}
+
+selColab.addEventListener('change', () => { selDia.value = ''; render(); });
+selMes.addEventListener('change', () => { selDia.value = ''; render(); });
+selDia.addEventListener('change', render);
 render();
 
 // ── Funciones
@@ -599,6 +628,7 @@ function render() {
   if (!colab || !mes) {
     showEmpty('📋', 'Selecciona un colaborador y un mes');
     statsWrap.style.display = 'none';
+    dayDetail.style.display = 'none';
     resetActions();
     return;
   }
@@ -607,12 +637,18 @@ function render() {
   if (!mesData) {
     showEmpty('🔍', 'Sin datos para este colaborador en este mes');
     statsWrap.style.display = 'none';
+    dayDetail.style.display = 'none';
     resetActions();
     return;
   }
 
+  fillDaySelect(mesData);
+
   const mesLabel = DATA.meses.find(m => m.value === mes)?.label ?? mes;
-  tTitle.textContent = `${title(colab)}  ·  ${mesLabel}`;
+  const diaFiltro = selDia.value;
+  tTitle.textContent = diaFiltro
+    ? `${title(colab)}  ·  ${mesLabel}  ·  ${diaFiltro}`
+    : `${title(colab)}  ·  ${mesLabel}`;
 
   // Stats
   const r = mesData.resumen;
@@ -632,8 +668,30 @@ function render() {
   btnExcel.download = buildExcelName(colab, mesLabel);
   btnExcel.classList.toggle('disabled', !mesData.excel_file);
 
+  const diasRender = diaFiltro
+    ? mesData.dias.filter(d => d.fecha === diaFiltro)
+    : mesData.dias;
+
+  if (diaFiltro && diasRender.length === 0) {
+    showEmpty('📅', 'Sin filas para la fecha seleccionada');
+    dayDetail.style.display = 'none';
+    return;
+  }
+
+  if (diaFiltro && diasRender.length === 1) {
+    const d0 = diasRender[0];
+    const marks = (d0.marcaciones && d0.marcaciones.length)
+      ? d0.marcaciones.join(' · ')
+      : (d0.estado === 'libre' ? 'Sin marcaciones' : '—');
+    dayDetailTitle.textContent = `Marcaciones · ${d0.dow} ${d0.dia} (${d0.fecha})`;
+    dayDetailMarks.textContent = marks;
+    dayDetail.style.display = 'block';
+  } else {
+    dayDetail.style.display = 'none';
+  }
+
   // Filas
-  tbody.innerHTML = mesData.dias.map(d => {
+  tbody.innerHTML = diasRender.map(d => {
     const libre      = d.estado === 'libre';
     const esFeriado  = libre && !!d.motivo_feriado;
     const exceso     = !libre && d.resaltar_descanso;

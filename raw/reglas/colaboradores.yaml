@@ -1,0 +1,8 @@
+# Colaboradores a ocultar del reporte web (inactivos, etc.)
+# - exclude_numeros: valor de columna "Número" / ID ZK (string)
+# - exclude_colab_keys: clave interna exacta, ej. id:42 o nom:juan perez
+# - exclude_name_contains: substring en el nombre mostrado (sin distinguir mayúsculas)
+
+exclude_numeros: []
+exclude_colab_keys: []
+exclude_name_contains: []
