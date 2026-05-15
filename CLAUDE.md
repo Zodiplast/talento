@@ -3,84 +3,69 @@
 ## Propósito
 
 Extractor de asistencia del biométrico ZKTeco (192.168.100.251:4370).
-Descarga el mes, guarda **Excel + Parquet**, opcionalmente **MotherDuck**, y genera el **reporte HTML** (CLI o **FastAPI** sin Postgres).
+**Producto actual en la raíz:** `biometrico/` (ingesta → `raw/`).
 
-Roadmap del nuevo front (React/HTML/CSS): **`PLAN.md`**.
+Todo lo demás del flujo viejo (plantilla HTML, `alexa`, reportes, FastAPI de ejemplo) está en **`legacy/`** y **está marcado para borrarse** cuando tengas el stack nuevo (ver `legacy/AVISO_ELIMINACION_PRONTO.md`).
+
+Roadmap: **`PLAN.md`**.
 
 ## Estructura
 
 ```
 talento/
-├── biometrico/              ← sync/extract hacia raw/ (según rama actual)
-│   └── schemas/paths.py     ← rutas proyecto + slugify + reports/
-├── alexa/                   ← reporte_core, horarios, upload_motherduck, menú legacy
-├── doc/
-│   ├── reporte_template.html ← UI (colaborador, mes, día, tabla)
-│   ├── reporte_web.py        ← CLI → alexa.reporte_core.write_html_report
-│   └── horarios.py           ← reexporta alexa.horarios
-├── legacy/
-│   ├── README.md
-│   ├── webapp/               ← FastAPI: / , /api/reporte.json , /api/dia.json , /health
+├── biometrico/              ← ingesta ZKTeco → raw/
+├── raw/
+├── legacy/                  ← stack anterior; ver AVISO_ELIMINACION_PRONTO.md
+│   ├── doc/                 ← plantilla + CLI reporte (antes en raíz)
+│   ├── alexa/
+│   ├── reports/
+│   ├── webapp/
 │   └── scripts/
-│       ├── publish.ps1       ← pipeline ejemplo: sync → build → (MotherDuck)
-│       └── deploy/nginx-talento.example.conf
-├── raw/biometrico/
-├── raw/biometrico_parquet/
-├── raw/reglas/
-├── reports/biometrico/
 ├── PLAN.md
 ├── Makefile
 ├── Dockerfile
 └── requirements.txt
 ```
 
+### Variables de entorno (hosting)
+
+- Copiá `.env.example` → `.env` (no se versiona).
+- **cPanel / UAPI:** `../hosting_web/.env` con `CPANEL_BASE_URL`, `CPANEL_USER`, `CPANEL_API_TOKEN`, `CPANEL_DOMAIN`.
+- **Subdominio y ruta remota:** `UPLOAD_SUBDOMINIO=talento` → `https://talento.zodiplast.com.ec`, carpeta típica `public_html/talento` (ajustá si tu cPanel usa otra ruta).
+
 ## Uso rápido
 
 ```bash
 uv pip install -r requirements.txt
 
-# 1) Sync (en PC con acceso al ZK) — ajustar al script vigente en biometrico/
 python biometrico/extract_biometrico.py --mes-actual
-
-# 2) HTML estático
-python doc/reporte_web.py
-# → reports/biometrico/reporte_biometrico.html
-
-# 3) Servicio web (lee raw/ cada request)
-#    Opcional: $env:AUTH_PASSWORD = "..."  (Basic auth)
-#    PYTHONPATH debe incluir legacy/ para importar webapp
 ```
 
-PowerShell:
+### Reporte HTML legacy (opcional)
+
+```bash
+python legacy/doc/reporte_web.py
+# → legacy/reports/biometrico/reporte_biometrico.html
+```
+
+### FastAPI legacy
 
 ```powershell
 $env:PYTHONPATH = ".;legacy"
 uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-Make (Unix): `make serve` (define `PYTHONPATH=.:legacy`).
-
-### MotherDuck (opcional, BI / nube)
+### MotherDuck (legacy)
 
 ```powershell
-$env:MOTHERDUCK_TOKEN = "..."
-python alexa/upload_motherduck.py --mes mayo --anio 2026
+$env:PYTHONPATH = ".;legacy"
+python legacy/alexa/upload_motherduck.py --mes mayo --anio 2026
 ```
 
-Tabla `talento.marcaciones_raw` en la base `md:zodiplast`. El token **no** va en el navegador; un backend o herramienta con credenciales consulta MotherDuck (p. ej. DuckDB/Java en servidor).
+### Pipeline PowerShell
 
-### Colaboradores inactivos
+`.\legacy\scripts\publish.ps1`
 
-Editá `raw/reglas/colaboradores.yaml` (`exclude_numeros`, `exclude_colab_keys`, `exclude_name_contains`) y volvé a correr `doc/reporte_web.py` o el webapp en `legacy/webapp`.
+### Docker
 
-### Deploy (talento.zodiplast.com.ec)
-
-1. **Docker**: `docker build -t talento-biometrico .` y montá volumen con `raw/` actualizado o copiá datos al build.
-2. **Nginx**: ver `legacy/scripts/deploy/nginx-talento.example.conf` (TLS + proxy a `:8080`).
-3. **Pipeline diario**: `.\legacy\scripts\publish.ps1` (ajustá deploy al final; subdominio `talento.zodiplast.com.ec`).
-
-## Flujo de datos
-
-1. Extract / sync → Excel + Parquet bajo `raw/`.
-2. `alexa.reporte_core.build_report_payload` lee **Parquet con prioridad sobre Excel** por mes si ambos existen.
-3. Plantilla `doc/reporte_template.html` consume el JSON (incluye `marcaciones` por día para el selector de día).
+`docker build -t talento-biometrico .` — copia `legacy/` completo; `PYTHONPATH=/app:/app/legacy`.

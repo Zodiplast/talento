@@ -8,13 +8,13 @@ Uso:
 import sys
 from pathlib import Path
 
-# Asegura que el root del proyecto esté en sys.path al correr directamente
-ROOT = Path(__file__).parent
-TALENTO_ROOT = ROOT.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-if str(TALENTO_ROOT) not in sys.path:
-    sys.path.insert(0, str(TALENTO_ROOT))
+# Asegura paths: `alexa` en legacy/alexa; `doc` en legacy/doc; repo root para `biometrico`.
+ALEXA_DIR = Path(__file__).resolve().parent
+LEGACY_DIR = ALEXA_DIR.parent
+TALENTO_ROOT = LEGACY_DIR.parent
+for p in (ALEXA_DIR, LEGACY_DIR, TALENTO_ROOT):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
 
 def _sep(ancho: int = 45) -> None:
@@ -38,7 +38,7 @@ def iniciar_servidor() -> None:
 
 
 def ver_turnos() -> None:
-    from biometrico.horarios import listar_turnos
+    from alexa.horarios import listar_turnos
     listar_turnos()
 
 

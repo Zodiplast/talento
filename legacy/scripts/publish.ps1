@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 # Este script está en legacy/scripts/ → subir dos niveles a la raíz del repo
 Set-Location (Join-Path $PSScriptRoot "..\..")
+$RepoRoot = (Get-Location).Path
+$env:PYTHONPATH = "$RepoRoot;$RepoRoot\legacy"
 
 Write-Host "== extract_biometrico (Excel) ==" -ForegroundColor Cyan
 if (-not $RemainingArgs -or $RemainingArgs.Count -eq 0) {
@@ -18,14 +20,14 @@ if (-not $RemainingArgs -or $RemainingArgs.Count -eq 0) {
 }
 
 Write-Host "== build HTML ==" -ForegroundColor Cyan
-python doc/reporte_web.py
+python legacy/doc/reporte_web.py
 
 if ($env:MOTHERDUCK_TOKEN) {
     Write-Host "== upload MotherDuck (opcional) ==" -ForegroundColor Cyan
-    python alexa/upload_motherduck.py @RemainingArgs
+    python legacy/alexa/upload_motherduck.py @RemainingArgs
 }
 
 # Write-Host "== deploy (ejemplo) ==" -ForegroundColor Cyan
-# scp reports/biometrico/reporte_biometrico.html user@host:/var/www/talento/
+# scp legacy/reports/biometrico/reporte_biometrico.html user@host:/var/www/talento/
 
 Write-Host "Listo." -ForegroundColor Green

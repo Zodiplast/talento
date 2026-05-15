@@ -15,13 +15,13 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    """Raíz del repo (carpetas `alexa/` y `doc/`), aunque webapp viva en `legacy/webapp/`."""
+    """Raíz del repo (`biometrico/` + `legacy/`). Plantilla y CLI en `legacy/doc/`."""
     p = Path(__file__).resolve().parent
     for _ in range(8):
-        if (p / "alexa").is_dir() and (p / "doc").is_dir():
+        if (p / "biometrico").is_dir() and (p / "legacy").is_dir():
             return p
         p = p.parent
-    raise RuntimeError("No se encontró la raíz del repo (faltan alexa/ y doc/).")
+    raise RuntimeError("No se encontró la raíz del repo (faltan biometrico/ y legacy/).")
 
 
 _ROOT = _repo_root()

@@ -1,10 +1,13 @@
-# Legacy (referencia y stack anterior)
+# Legacy — **se eliminará pronto**
 
-Aquí vive lo que **ya no es el foco principal** del repo pero sirve como contexto, copiar ideas, o seguir usando hasta migrar.
+> **Lee primero:** [`AVISO_ELIMINACION_PRONTO.md`](AVISO_ELIMINACION_PRONTO.md) — aquí está todo lo del stack anterior; **no es la base del proyecto nuevo** (solo referencia hasta migrar o borrar).
 
-| Ruta | Qué es |
-|------|--------|
-| `legacy/webapp/` | FastAPI que sirve el reporte HTML y JSON (`/api/reporte.json`, `/api/dia.json`). Sigue siendo válido; se movió aquí para dejar la raíz lista para el nuevo front (React/HTML/CSS). |
-| `legacy/scripts/` | `publish.ps1` (sync → HTML → MotherDuck opcional) y ejemplo de Nginx. |
+| Ruta | Contenido |
+|------|-----------|
+| `legacy/doc/` | Plantilla HTML, `reporte_web.py`, `horarios.py` (CLI / plantilla del reporte viejo). |
+| `legacy/alexa/` | Paquete `alexa`: `reporte_core`, MotherDuck, sync de respaldo, menú, `app/` Postgres antiguo. |
+| `legacy/reports/` | HTML y Excel generados por el pipeline antiguo. |
+| `legacy/webapp/` | FastAPI que leía `raw/` y rellenaba la plantilla. |
+| `legacy/scripts/` | `publish.ps1`, ejemplo Nginx. |
 
-**Importante:** la lógica de negocio del reporte **no** está en `legacy/`; sigue en `alexa/reporte_core.py`, `alexa/horarios.py`, `doc/reporte_web.py` y `biometrico/`. Renombrar o mover `alexa/` es un paso aparte (ver `PLAN.md` en la raíz del repo).
+Para `import alexa` o `import doc` hace falta **`PYTHONPATH` con la raíz del repo y `legacy/`** (véase `Makefile`, `Dockerfile`, `legacy/scripts/publish.ps1`).

@@ -1,6 +1,38 @@
+# --- Python ---
 .venv/
+venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Secretos y variables de entorno (no subir) ---
 .env
+.env.*
+!.env.example
+
+# --- Datos de ingesta / generados localmente ---
 raw/biometrico/
+raw/biometrico_parquet/*.parquet
+!raw/biometrico_parquet/.gitkeep
+
+# Legacy: reportes y Excel generados (opcional; descomentá si no querés versionar nada de legacy/reports)
+# legacy/reports/
+
+# --- Herramientas / tests ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# --- SO / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*~

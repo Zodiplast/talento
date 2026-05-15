@@ -29,9 +29,9 @@ from app.processor import generar_excel_colaborador, process_excel_file
 
 # ── Rutas de archivos ─────────────────────────────────────────────────────────
 
-_ROOT = Path(__file__).resolve().parents[1]
-_TEMPLATE_PATH = _ROOT / "biometrico" / "reporte_template.html"
-_EXCEL_DIR = _ROOT / "reports" / "biometrico" / "excel"
+_ROOT = Path(__file__).resolve().parents[3]
+_TEMPLATE_PATH = _ROOT / "legacy" / "doc" / "reporte_template.html"
+_EXCEL_DIR = _ROOT / "legacy" / "reports" / "biometrico" / "excel"
 _FERIADOS_PATH = _ROOT / "raw" / "reglas" / "feriados_horarios.xlsx"
 
 # Leer template una sola vez al arrancar (no cambia en producción)

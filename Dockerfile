@@ -9,11 +9,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY biometrico ./biometrico
-COPY alexa ./alexa
-COPY doc ./doc
 COPY raw ./raw
-COPY legacy/webapp ./legacy/webapp
-COPY reports ./reports
+COPY legacy ./legacy
 
 # El contenedor sirve datos montados o copiados en ./raw/biometrico* y ./raw/reglas
 EXPOSE 8080

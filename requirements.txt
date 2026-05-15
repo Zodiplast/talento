@@ -1,6 +1,7 @@
 pyzk       # leer biométrico ZKTeco vía TCP (puerto 4370)
 openpyxl   # escribir .xlsx
-polars     # parquet (sync) + reporte_core
+polars     # parquet (sync) + alexa/reporte_core
+fastexcel  # pl.read_excel (.xlsx) en Polars reciente
 duckdb     # MotherDuck (md:...) y consultas locales
 pyyaml     # raw/reglas/colaboradores.yaml
 fastapi    # servicio web reports/biometrico

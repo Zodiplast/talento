@@ -1,12 +1,12 @@
 """
 reporte_web.py — CLI que genera el HTML del reporte biométrico.
 
-La lógica vive en biometrico/reporte_core.py (única fuente de verdad).
+La lógica vive en `legacy/alexa/reporte_core.py` (única fuente de verdad).
 
 Uso (desde la raíz talento/):
-    python doc/reporte_web.py
+    python legacy/doc/reporte_web.py
 
-Salida: reports/biometrico/reporte_biometrico.html
+Salida: legacy/reports/biometrico/reporte_biometrico.html
 """
 
 from __future__ import annotations
@@ -14,11 +14,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+_LEGACY = _ROOT / "legacy"
+if _LEGACY.is_dir() and str(_LEGACY) not in sys.path:
+    sys.path.insert(0, str(_LEGACY))
 
-from biometrico.reporte_core import write_html_report
+from alexa.reporte_core import write_html_report
 
 sys.stdout.reconfigure(encoding="utf-8")
 
