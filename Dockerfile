@@ -3,15 +3,16 @@ FROM python:3.12-slim
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/legacy
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY biometrico ./biometrico
+COPY alexa ./alexa
 COPY doc ./doc
 COPY raw ./raw
-COPY webapp ./webapp
+COPY legacy/webapp ./legacy/webapp
 COPY reports ./reports
 
 # El contenedor sirve datos montados o copiados en ./raw/biometrico* y ./raw/reglas

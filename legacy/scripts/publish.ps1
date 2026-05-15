@@ -7,17 +7,22 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-Set-Location (Join-Path $PSScriptRoot "..")
+# Este script está en legacy/scripts/ → subir dos niveles a la raíz del repo
+Set-Location (Join-Path $PSScriptRoot "..\..")
 
-Write-Host "== sync_device ==" -ForegroundColor Cyan
-python biometrico/sync_device.py @RemainingArgs
+Write-Host "== extract_biometrico (Excel) ==" -ForegroundColor Cyan
+if (-not $RemainingArgs -or $RemainingArgs.Count -eq 0) {
+    python biometrico/extract_biometrico.py --mes-actual
+} else {
+    python biometrico/extract_biometrico.py @RemainingArgs
+}
 
 Write-Host "== build HTML ==" -ForegroundColor Cyan
 python doc/reporte_web.py
 
 if ($env:MOTHERDUCK_TOKEN) {
     Write-Host "== upload MotherDuck (opcional) ==" -ForegroundColor Cyan
-    python biometrico/upload_motherduck.py @RemainingArgs
+    python alexa/upload_motherduck.py @RemainingArgs
 }
 
 # Write-Host "== deploy (ejemplo) ==" -ForegroundColor Cyan

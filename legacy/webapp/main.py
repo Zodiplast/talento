@@ -3,7 +3,6 @@ FastAPI: sirve el reporte HTML con datos actuales desde raw/ (Excel o Parquet).
 
 Variables de entorno:
   AUTH_PASSWORD  — si está definido, exige HTTP Basic (cualquier usuario, ese password)
-  TALENTO_ROOT   — opcional; por defecto el padre de webapp/ (repo talento)
 """
 
 from __future__ import annotations
@@ -14,14 +13,28 @@ import secrets
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parents[1]
+
+def _repo_root() -> Path:
+    """Raíz del repo (carpetas `alexa/` y `doc/`), aunque webapp viva en `legacy/webapp/`."""
+    p = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (p / "alexa").is_dir() and (p / "doc").is_dir():
+            return p
+        p = p.parent
+    raise RuntimeError("No se encontró la raíz del repo (faltan alexa/ y doc/).")
+
+
+_ROOT = _repo_root()
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+_legacy = _ROOT / "legacy"
+if _legacy.is_dir() and str(_legacy) not in sys.path:
+    sys.path.insert(0, str(_legacy))
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from biometrico.reporte_core import build_report_payload
+from alexa.reporte_core import build_report_payload
 from biometrico.schemas.paths import REPORT_TEMPLATE_HTML
 
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD")
